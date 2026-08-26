@@ -1,7 +1,13 @@
 from parsers.packet_parser import PacketParser
+
 from core.normalizer import SignalNormalizer
+from core.session_manager import SessionManager
+
 from analysis.rule_engine import RuleEngine
 from analysis.risk_engine import RiskEngine
+from analysis.confidence_engine import ConfidenceEngine
+
+from reports.report_builder import ReportBuilder
 
 
 class SecurityEngine:
@@ -9,53 +15,113 @@ class SecurityEngine:
     def __init__(self):
 
         self.packet_parser = PacketParser()
+
         self.normalizer = SignalNormalizer()
 
         self.rule_engine = RuleEngine()
+
         self.risk_engine = RiskEngine()
 
-    def analyze(self, packets):
+        self.confidence_engine = (
+            ConfidenceEngine()
+        )
 
-        signals = []
+        self.report_builder = (
+            ReportBuilder()
+        )
+
+    def analyze(
+        self,
+        packets,
+        source_type="unknown"
+    ):
+
+        all_signals = []
 
         packet_count = 0
-        relevant_packets = 0
+        security_packets = 0
+
+        session_manager = (
+            SessionManager()
+        )
 
         for packet in packets:
 
             packet_count += 1
 
-            packet_signals = self.packet_parser.parse(
-                packet
+            packet_signals = (
+                self.packet_parser.parse(
+                    packet,
+                    packet_number=packet_count
+                )
             )
 
-            if packet_signals:
+            if not packet_signals:
+                continue
 
-                relevant_packets += 1
+            security_packets += 1
 
-                signals.extend(
-                    packet_signals
-                )
+            all_signals.extend(
+                packet_signals
+            )
 
-        normalized = self.normalizer.normalize(
-            signals
+            session_manager.ingest(
+                packet_signals
+            )
+
+        normalized = (
+            self.normalizer.normalize(
+                all_signals
+            )
         )
 
-        findings = self.rule_engine.evaluate(
-            normalized
+        findings = (
+            self.rule_engine.evaluate(
+                normalized
+            )
         )
 
-        risk = self.risk_engine.calculate(
-            findings
+        risk = (
+            self.risk_engine.calculate(
+                findings
+            )
         )
 
-        return {
-            "packets_processed": packet_count,
-            "security_packets": relevant_packets,
+        confidence = (
+            self.confidence_engine.calculate(
+                normalized
+            )
+        )
 
-            "signals": normalized,
+        sessions = (
+            session_manager.get_sessions()
+        )
 
-            "risk": risk,
+        return (
+            self.report_builder.build(
 
-            "findings": findings
-        }
+                packets_processed=
+                    packet_count,
+
+                security_packets=
+                    security_packets,
+
+                signals=
+                    normalized,
+
+                findings=
+                    findings,
+
+                risk=
+                    risk,
+
+                confidence=
+                    confidence,
+
+                sessions=
+                    sessions,
+
+                source_type=
+                    source_type
+            )
+        )

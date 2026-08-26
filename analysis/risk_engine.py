@@ -2,44 +2,83 @@ class RiskEngine:
 
     WEIGHTS = {
         "info": 0,
-        "low": 5,
-        "medium": 15,
-        "high": 30,
-        "critical": 50
+        "low": 10,
+        "medium": 30,
+        "high": 60,
+        "critical": 100
     }
 
-    def calculate(self, findings):
+    def calculate(
+        self,
+        findings
+    ):
 
-        score = 0
+        risk_findings = [
+            finding
+            for finding in findings
+            if finding.get(
+                "severity"
+            ) != "info"
+        ]
 
-        for finding in findings:
+        if not risk_findings:
+
+            return {
+                "score": 0,
+                "security_score": 100,
+                "level": "LOW"
+            }
+
+        scores = []
+
+        for finding in risk_findings:
 
             severity = finding.get(
                 "severity",
-                "info"
+                "medium"
             )
 
-            score += self.WEIGHTS.get(
-                severity,
-                0
+            scores.append(
+                self.WEIGHTS.get(
+                    severity,
+                    30
+                )
             )
 
-        score = min(score, 100)
+        highest = max(scores)
+
+        average = (
+            sum(scores)
+            / len(scores)
+        )
+
+        score = int(
+            round(
+                highest * 0.7
+                + average * 0.3
+            )
+        )
+
+        score = max(
+            0,
+            min(score, 100)
+        )
 
         return {
             "score": score,
-            "level": self._get_level(score)
+            "security_score": 100 - score,
+            "level": self._level(score)
         }
 
-    def _get_level(self, score):
+    def _level(self, score):
 
-        if score <= 20:
+        if score < 25:
             return "LOW"
 
-        if score <= 50:
+        if score < 50:
             return "MEDIUM"
 
-        if score <= 75:
+        if score < 75:
             return "HIGH"
 
         return "CRITICAL"

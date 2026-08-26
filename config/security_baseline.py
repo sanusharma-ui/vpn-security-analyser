@@ -1,23 +1,43 @@
 SECURITY_BASELINE = {
+
+    "policy_name": "Default IPsec Security Baseline",
+
     "ike_versions": {
-        "preferred": ["IKEv2"],
-        "legacy": ["IKEv1"]
+
+        "preferred": [
+            "IKEv2"
+        ],
+
+        "legacy": [
+            "IKEv1"
+        ]
     },
 
     "encryption": {
-        "strong": [
+
+        "preferred": [
             "AES-GCM-16"
         ],
+
         "acceptable": [
             "AES-CBC",
             "AES-CTR"
+        ],
+
+        "weak": [
+            "DES",
+            "3DES",
+            "NULL"
         ]
     },
 
     "minimum_key_length": 128,
 
+    "preferred_key_length": 256,
+
     "prf": {
-        "strong": [
+
+        "preferred": [
             "HMAC-SHA2-256",
             "HMAC-SHA2-384",
             "HMAC-SHA2-512"
@@ -29,8 +49,23 @@ SECURITY_BASELINE = {
         ]
     },
 
+    "integrity": {
+
+        "preferred": [
+            "HMAC-SHA2-256-128",
+            "HMAC-SHA2-384-192",
+            "HMAC-SHA2-512-256"
+        ],
+
+        "legacy": [
+            "HMAC-MD5-96",
+            "HMAC-SHA1-96"
+        ]
+    },
+
     "dh_groups": {
-        "strong": [
+
+        "preferred": [
             19,
             20,
             21
@@ -42,6 +77,12 @@ SECURITY_BASELINE = {
             16,
             17,
             18
+        ],
+
+        "weak": [
+            1,
+            2,
+            5
         ]
     }
 }

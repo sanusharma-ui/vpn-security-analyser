@@ -12,7 +12,7 @@ class PCAPSource(BaseSource):
 
     def read(self):
 
-        if not os.path.exists(self.file_path):
+        if not os.path.isfile(self.file_path):
             raise FileNotFoundError(
                 f"PCAP file not found: {self.file_path}"
             )
@@ -27,4 +27,7 @@ class PCAPSource(BaseSource):
     def close(self):
 
         if self.capture:
-            self.capture.close()
+            try:
+                self.capture.close()
+            except Exception:
+                pass

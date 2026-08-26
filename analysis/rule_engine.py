@@ -3,45 +3,113 @@ from config.security_baseline import SECURITY_BASELINE
 
 class RuleEngine:
 
-    def __init__(self, baseline=None):
-        self.baseline = baseline or SECURITY_BASELINE
+    def __init__(
+        self,
+        baseline=None
+    ):
 
-    def evaluate(self, signals):
+        self.baseline = (
+            baseline
+            or SECURITY_BASELINE
+        )
+
+    def evaluate(
+        self,
+        signals
+    ):
 
         findings = []
 
-        self._check_ike_version(signals, findings)
-        self._check_encryption(signals, findings)
-        self._check_key_length(signals, findings)
-        self._check_prf(signals, findings)
-        self._check_dh_group(signals, findings)
+        self._check_ike(
+            signals,
+            findings
+        )
+
+        self._check_encryption(
+            signals,
+            findings
+        )
+
+        self._check_key_length(
+            signals,
+            findings
+        )
+
+        self._check_prf(
+            signals,
+            findings
+        )
+
+        self._check_integrity(
+            signals,
+            findings
+        )
+
+        self._check_dh(
+            signals,
+            findings
+        )
+
+        self._check_ipsec_protocol(
+            signals,
+            findings
+        )
 
         return findings
 
-    def _add_finding(
+    def _add(
         self,
         findings,
         rule_id,
         parameter,
         value,
         severity,
-        message
+        message,
+        recommendation=None
     ):
 
         findings.append({
+
             "rule_id": rule_id,
+
             "parameter": parameter,
+
             "value": value,
+
             "severity": severity,
-            "message": message
+
+            "message": message,
+
+            "recommendation":
+                recommendation
         })
 
-    def _check_ike_version(self, signals, findings):
+    def _single(self, value):
 
-        value = signals.get("ike_version")
+        if isinstance(value, list):
+
+            if not value:
+                return None
+
+            return value[0]
+
+        return value
+
+    def _check_ike(
+        self,
+        signals,
+        findings
+    ):
+
+        value = self._single(
+            signals.get(
+                "ike_version"
+            )
+        )
 
         if value is None:
-            self._add_finding(
+
+            self._add(
                 findings,
                 "IKE-001",
                 "ike_version",
@@ -49,10 +117,14 @@ class RuleEngine:
                 "medium",
                 "IKE version could not be determined."
             )
+
             return
 
-        if value in self.baseline["ike_versions"]["preferred"]:
-            self._add_finding(
+        if value in self.baseline[
+            "ike_versions"
+        ]["preferred"]:
+
+            self._add(
                 findings,
                 "IKE-002",
                 "ike_version",
@@ -61,32 +133,48 @@ class RuleEngine:
                 "Preferred IKE version detected."
             )
 
-        elif value in self.baseline["ike_versions"]["legacy"]:
-            self._add_finding(
+            return
+
+        if value in self.baseline[
+            "ike_versions"
+        ]["legacy"]:
+
+            self._add(
                 findings,
                 "IKE-003",
                 "ike_version",
                 value,
                 "high",
-                "Legacy IKE version detected."
+                "Legacy IKE version detected.",
+                "Migrate to IKEv2."
             )
 
-        else:
-            self._add_finding(
-                findings,
-                "IKE-004",
-                "ike_version",
-                value,
-                "medium",
-                "Unknown or unsupported IKE version."
+            return
+
+        self._add(
+            findings,
+            "IKE-004",
+            "ike_version",
+            value,
+            "medium",
+            "Unknown IKE version."
+        )
+
+    def _check_encryption(
+        self,
+        signals,
+        findings
+    ):
+
+        value = self._single(
+            signals.get(
+                "encryption"
             )
-
-    def _check_encryption(self, signals, findings):
-
-        value = signals.get("encryption")
+        )
 
         if value is None:
-            self._add_finding(
+
+            self._add(
                 findings,
                 "ENC-001",
                 "encryption",
@@ -94,44 +182,79 @@ class RuleEngine:
                 "medium",
                 "Encryption algorithm could not be determined."
             )
+
             return
 
-        if value in self.baseline["encryption"]["strong"]:
-            self._add_finding(
+        policy = self.baseline[
+            "encryption"
+        ]
+
+        if value in policy[
+            "preferred"
+        ]:
+
+            self._add(
                 findings,
                 "ENC-002",
                 "encryption",
                 value,
                 "info",
-                "Strong encryption algorithm detected."
+                "Preferred encryption algorithm detected."
             )
 
-        elif value in self.baseline["encryption"]["acceptable"]:
-            self._add_finding(
+        elif value in policy[
+            "acceptable"
+        ]:
+
+            self._add(
                 findings,
                 "ENC-003",
                 "encryption",
                 value,
                 "low",
-                "Encryption algorithm is acceptable but not preferred."
+                "Encryption is acceptable but not preferred."
             )
 
-        else:
-            self._add_finding(
+        elif value in policy[
+            "weak"
+        ]:
+
+            self._add(
                 findings,
                 "ENC-004",
                 "encryption",
                 value,
-                "high",
-                "Encryption algorithm is not approved by the current baseline."
+                "critical",
+                "Weak encryption algorithm detected.",
+                "Replace with an approved modern cipher."
             )
 
-    def _check_key_length(self, signals, findings):
+        else:
 
-        value = signals.get("key_length")
+            self._add(
+                findings,
+                "ENC-005",
+                "encryption",
+                value,
+                "medium",
+                "Encryption algorithm is not recognized by the baseline."
+            )
+
+    def _check_key_length(
+        self,
+        signals,
+        findings
+    ):
+
+        value = self._single(
+            signals.get(
+                "key_length"
+            )
+        )
 
         if value is None:
-            self._add_finding(
+
+            self._add(
                 findings,
                 "KEY-001",
                 "key_length",
@@ -139,23 +262,45 @@ class RuleEngine:
                 "low",
                 "Encryption key length could not be determined."
             )
+
             return
 
-        minimum = self.baseline["minimum_key_length"]
+        minimum = self.baseline[
+            "minimum_key_length"
+        ]
 
-        if value >= 256:
+        preferred = self.baseline[
+            "preferred_key_length"
+        ]
+
+        if value >= preferred:
+
             severity = "info"
-            message = "Strong encryption key length detected."
+
+            message = (
+                "Preferred encryption "
+                "key length detected."
+            )
 
         elif value >= minimum:
+
             severity = "low"
-            message = "Encryption key length meets the minimum baseline."
+
+            message = (
+                "Encryption key length "
+                "meets minimum baseline."
+            )
 
         else:
-            severity = "high"
-            message = "Encryption key length is below the required baseline."
 
-        self._add_finding(
+            severity = "high"
+
+            message = (
+                "Encryption key length "
+                "is below baseline."
+            )
+
+        self._add(
             findings,
             "KEY-002",
             "key_length",
@@ -164,92 +309,269 @@ class RuleEngine:
             message
         )
 
-    def _check_prf(self, signals, findings):
+    def _check_prf(
+        self,
+        signals,
+        findings
+    ):
 
-        value = signals.get("prf")
+        value = self._single(
+            signals.get("prf")
+        )
 
         if value is None:
-            self._add_finding(
+
+            self._add(
                 findings,
                 "PRF-001",
                 "prf",
                 None,
                 "medium",
-                "PRF algorithm could not be determined."
+                "PRF could not be determined."
             )
+
             return
 
-        if value in self.baseline["prf"]["strong"]:
-            self._add_finding(
+        policy = self.baseline[
+            "prf"
+        ]
+
+        if value in policy[
+            "preferred"
+        ]:
+
+            severity = "info"
+            message = "Preferred PRF detected."
+
+        elif value in policy[
+            "legacy"
+        ]:
+
+            severity = "high"
+            message = "Legacy PRF detected."
+
+        else:
+
+            severity = "medium"
+            message = "Unknown PRF."
+
+        self._add(
+            findings,
+            "PRF-002",
+            "prf",
+            value,
+            severity,
+            message
+        )
+
+    def _check_integrity(
+        self,
+        signals,
+        findings
+    ):
+
+        encryption = self._single(
+            signals.get(
+                "encryption"
+            )
+        )
+
+        integrity = self._single(
+            signals.get(
+                "integrity"
+            )
+        )
+
+        if (
+            encryption
+            and "GCM" in encryption
+        ):
+
+            self._add(
                 findings,
-                "PRF-002",
-                "prf",
-                value,
+                "INT-001",
+                "integrity",
+                "AEAD",
                 "info",
-                "Strong PRF detected."
+                "Integrity protection is provided by the AEAD encryption mode."
             )
 
-        elif value in self.baseline["prf"]["legacy"]:
-            self._add_finding(
+            return
+
+        if integrity is None:
+
+            self._add(
                 findings,
-                "PRF-003",
-                "prf",
-                value,
-                "high",
-                "Legacy PRF detected."
+                "INT-002",
+                "integrity",
+                None,
+                "medium",
+                "Integrity algorithm could not be determined."
+            )
+
+            return
+
+        policy = self.baseline[
+            "integrity"
+        ]
+
+        if integrity in policy[
+            "preferred"
+        ]:
+
+            severity = "info"
+
+            message = (
+                "Preferred integrity "
+                "algorithm detected."
+            )
+
+        elif integrity in policy[
+            "legacy"
+        ]:
+
+            severity = "high"
+
+            message = (
+                "Legacy integrity "
+                "algorithm detected."
             )
 
         else:
-            self._add_finding(
-                findings,
-                "PRF-004",
-                "prf",
-                value,
-                "medium",
-                "PRF is not recognized by the current baseline."
+
+            severity = "medium"
+
+            message = (
+                "Integrity algorithm "
+                "is not recognized."
             )
 
-    def _check_dh_group(self, signals, findings):
+        self._add(
+            findings,
+            "INT-003",
+            "integrity",
+            integrity,
+            severity,
+            message
+        )
 
-        value = signals.get("dh_group")
+    def _check_dh(
+        self,
+        signals,
+        findings
+    ):
+
+        value = self._single(
+            signals.get(
+                "dh_group"
+            )
+        )
 
         if value is None:
-            self._add_finding(
+
+            self._add(
                 findings,
                 "DH-001",
                 "dh_group",
                 None,
                 "medium",
-                "Diffie-Hellman group could not be determined."
+                "Key-exchange group could not be determined."
             )
+
             return
 
-        if value in self.baseline["dh_groups"]["strong"]:
-            self._add_finding(
-                findings,
-                "DH-002",
-                "dh_group",
-                value,
-                "info",
-                "Strong key-exchange group detected."
+        policy = self.baseline[
+            "dh_groups"
+        ]
+
+        if value in policy[
+            "preferred"
+        ]:
+
+            severity = "info"
+
+            message = (
+                "Preferred key-exchange "
+                "group detected."
             )
 
-        elif value in self.baseline["dh_groups"]["acceptable"]:
-            self._add_finding(
-                findings,
-                "DH-003",
-                "dh_group",
-                value,
-                "low",
-                "Key-exchange group is acceptable but not preferred."
+        elif value in policy[
+            "acceptable"
+        ]:
+
+            severity = "low"
+
+            message = (
+                "Key-exchange group "
+                "is acceptable."
+            )
+
+        elif value in policy[
+            "weak"
+        ]:
+
+            severity = "high"
+
+            message = (
+                "Weak key-exchange "
+                "group detected."
             )
 
         else:
-            self._add_finding(
+
+            severity = "medium"
+
+            message = (
+                "Unknown key-exchange "
+                "group."
+            )
+
+        self._add(
+            findings,
+            "DH-002",
+            "dh_group",
+            value,
+            severity,
+            message
+        )
+
+    def _check_ipsec_protocol(
+        self,
+        signals,
+        findings
+    ):
+
+        protocol = signals.get(
+            "ipsec_protocol"
+        )
+
+        if protocol is None:
+            return
+
+        values = (
+            protocol
+            if isinstance(protocol, list)
+            else [protocol]
+        )
+
+        if "ESP" in values:
+
+            self._add(
                 findings,
-                "DH-004",
-                "dh_group",
-                value,
-                "high",
-                "Key-exchange group is not approved by the current baseline."
+                "IPSEC-001",
+                "ipsec_protocol",
+                "ESP",
+                "info",
+                "ESP traffic detected."
+            )
+
+        if "AH" in values:
+
+            self._add(
+                findings,
+                "IPSEC-002",
+                "ipsec_protocol",
+                "AH",
+                "low",
+                "AH traffic detected."
             )
