@@ -65,9 +65,13 @@ class SecurityEngine:
                 packet_signals
             )
 
-            session_manager.ingest(
+            session_signals = session_manager.ingest(
                 packet_signals
             )
+            if session_signals:
+                all_signals.extend(
+                    session_signals
+                )
 
         normalized = (
             self.normalizer.normalize(

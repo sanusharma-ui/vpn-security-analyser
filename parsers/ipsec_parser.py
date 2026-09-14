@@ -6,9 +6,28 @@ class IPsecParser:
     def parse(self, packet, packet_number=None):
 
         signals = []
+        has_esp = hasattr(packet, "esp")
+        has_ah = hasattr(packet, "ah")
 
-        if hasattr(packet, "esp"):
+        # Check for NAT-Traversal UDP encapsulation (UDP port 4500)
+        if hasattr(packet, "udp"):
+            try:
+                srcport = str(packet.udp.get_field_value("srcport"))
+                dstport = str(packet.udp.get_field_value("dstport"))
+                if srcport == "4500" or dstport == "4500":
+                    signals.append(
+                        SecuritySignal(
+                            name="natt_detected",
+                            value=True,
+                            source="packet",
+                            packet_number=packet_number,
+                            category="protocol"
+                        )
+                    )
+            except Exception:
+                pass
 
+        if has_esp:
             layer = packet.esp
 
             signals.append(
@@ -21,44 +40,63 @@ class IPsecParser:
                 )
             )
 
-            spi = self._get_field(
-                layer,
-                "spi"
-            )
+            spi = self._get_field(layer, "spi")
+            spi_str = str(spi) if spi else None
 
-            if spi:
-
+            if spi_str:
                 signals.append(
                     SecuritySignal(
                         name="esp_spi",
-                        value=str(spi),
+                        value=spi_str,
                         source="packet",
                         packet_number=packet_number,
-                        session_id=f"esp-{spi}",
+                        session_id=f"esp-{spi_str}",
                         category="session"
                     )
                 )
 
-            sequence = self._get_field(
-                layer,
-                "sequence"
-            )
-
-            if sequence is not None:
-
+            seq_raw = self._get_field(layer, "sequence")
+            if seq_raw is not None:
                 signals.append(
                     SecuritySignal(
                         name="esp_sequence",
-                        value=str(sequence),
+                        value=str(seq_raw),
                         source="packet",
                         packet_number=packet_number,
-                        session_id=f"esp-{spi}" if spi else None,
+                        session_id=f"esp-{spi_str}" if spi_str else None,
                         category="session"
                     )
                 )
 
-        if hasattr(packet, "ah"):
+                try:
+                    seq_int = int(str(seq_raw), 0)
+                    signals.append(
+                        SecuritySignal(
+                            name="esp_sequence_int",
+                            value=seq_int,
+                            source="packet",
+                            packet_number=packet_number,
+                            session_id=f"esp-{spi_str}" if spi_str else None,
+                            category="session"
+                        )
+                    )
+                    # Detect potential sequence number rollover risk (> 4 billion without ESN)
+                    if seq_int > 4_000_000_000:
+                        signals.append(
+                            SecuritySignal(
+                                name="sequence_rollover_risk",
+                                value=True,
+                                source="packet",
+                                packet_number=packet_number,
+                                session_id=f"esp-{spi_str}" if spi_str else None,
+                                category="vulnerability"
+                            )
+                        )
+                except Exception:
+                    pass
 
+        if has_ah:
+            layer = packet.ah
             signals.append(
                 SecuritySignal(
                     name="ipsec_protocol",
@@ -69,10 +107,35 @@ class IPsecParser:
                 )
             )
 
+            spi = self._get_field(layer, "spi")
+            if spi:
+                signals.append(
+                    SecuritySignal(
+                        name="ah_spi",
+                        value=str(spi),
+                        source="packet",
+                        packet_number=packet_number,
+                        session_id=f"ah-{spi}",
+                        category="session"
+                    )
+                )
+
+            # Security Check: AH provides integrity and authentication but NO confidentiality
+            if not has_esp:
+                signals.append(
+                    SecuritySignal(
+                        name="ah_without_esp",
+                        value=True,
+                        source="packet",
+                        packet_number=packet_number,
+                        session_id=f"ah-{spi}" if spi else None,
+                        category="vulnerability"
+                    )
+                )
+
         return signals
 
     def _get_field(self, layer, name):
-
         try:
             return layer.get_field_value(name)
         except Exception:

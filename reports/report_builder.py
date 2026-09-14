@@ -102,18 +102,42 @@ class ReportBuilder:
             "esp_spi":
                 signals.get(
                     "esp_spi"
-                )
+                ),
+
+            "natt_detected":
+                bool(signals.get("natt_detected"))
         }
+
+        # Compliance Evaluation Summary
+        compliance = {
+            "nist_sp_800_77_rev1": (
+                "PASS"
+                if any(f.get("rule_id") == "COMP-001" and f.get("severity") == "info" for f in findings)
+                else "FAIL"
+            ),
+            "cnsa_2_0": (
+                "PASS"
+                if any(f.get("rule_id") == "COMP-002" and f.get("severity") == "info" for f in findings)
+                else "FAIL"
+            )
+        }
+
+        # Vulnerability Severity Counts
+        severity_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0}
+        for finding in findings:
+            sev = finding.get("severity", "info")
+            if sev in severity_counts:
+                severity_counts[sev] += 1
 
         return {
 
             "metadata": {
 
                 "engine":
-                    "VPN Security Analyzer",
+                    "AI-Powered IPsec VPN Protocol Analyzer",
 
                 "engine_version":
-                    "0.2.0",
+                    "0.3.0",
 
                 "generated_at":
                     datetime.now(
@@ -126,6 +150,12 @@ class ReportBuilder:
 
             "summary":
                 summary,
+
+            "compliance":
+                compliance,
+
+            "vulnerability_counts":
+                severity_counts,
 
             "traffic": {
 
