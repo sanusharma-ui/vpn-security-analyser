@@ -1,5 +1,6 @@
 from parsers.ike_parser import IKEParser
 from parsers.ipsec_parser import IPsecParser
+from parsers.context import timestamp
 
 
 class PacketParser:
@@ -31,4 +32,6 @@ class PacketParser:
             )
         )
 
+        for signal in signals:
+            signal.timestamp = timestamp(packet)
         return signals

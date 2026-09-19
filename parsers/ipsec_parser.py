@@ -1,4 +1,5 @@
 from core.signal import SecuritySignal
+from parsers.context import endpoints
 
 
 class IPsecParser:
@@ -6,6 +7,7 @@ class IPsecParser:
     def parse(self, packet, packet_number=None):
 
         signals = []
+        src, dst = endpoints(packet)
         has_esp = hasattr(packet, "esp")
         has_ah = hasattr(packet, "ah")
 
@@ -50,7 +52,7 @@ class IPsecParser:
                         value=spi_str,
                         source="packet",
                         packet_number=packet_number,
-                        session_id=f"esp-{spi_str}",
+                        session_id=f"esp:{src}>{dst}:{spi_str}",
                         category="session"
                     )
                 )
@@ -63,7 +65,7 @@ class IPsecParser:
                         value=str(seq_raw),
                         source="packet",
                         packet_number=packet_number,
-                        session_id=f"esp-{spi_str}" if spi_str else None,
+                        session_id=f"esp:{src}>{dst}:{spi_str}" if spi_str else None,
                         category="session"
                     )
                 )
@@ -76,7 +78,7 @@ class IPsecParser:
                             value=seq_int,
                             source="packet",
                             packet_number=packet_number,
-                            session_id=f"esp-{spi_str}" if spi_str else None,
+                            session_id=f"esp:{src}>{dst}:{spi_str}" if spi_str else None,
                             category="session"
                         )
                     )
@@ -88,7 +90,7 @@ class IPsecParser:
                                 value=True,
                                 source="packet",
                                 packet_number=packet_number,
-                                session_id=f"esp-{spi_str}" if spi_str else None,
+                                session_id=f"esp:{src}>{dst}:{spi_str}" if spi_str else None,
                                 category="vulnerability"
                             )
                         )
@@ -115,7 +117,7 @@ class IPsecParser:
                         value=str(spi),
                         source="packet",
                         packet_number=packet_number,
-                        session_id=f"ah-{spi}",
+                        session_id=f"ah:{src}>{dst}:{spi}",
                         category="session"
                     )
                 )
@@ -128,11 +130,17 @@ class IPsecParser:
                         value=True,
                         source="packet",
                         packet_number=packet_number,
-                        session_id=f"ah-{spi}" if spi else None,
+                        session_id=f"ah:{src}>{dst}:{spi}" if spi else None,
                         category="vulnerability"
                     )
                 )
 
+        for signal in signals:
+            if signal.session_id is None:
+                if has_esp and spi_str:
+                    signal.session_id = f"esp:{src}>{dst}:{spi_str}"
+                elif has_ah and spi:
+                    signal.session_id = f"ah:{src}>{dst}:{spi}"
         return signals
 
     def _get_field(self, layer, name):

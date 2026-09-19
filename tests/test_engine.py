@@ -29,23 +29,13 @@ def test_session_manager_replay_detection():
         SecuritySignal(name="esp_sequence_int", value=100, source="packet", session_id="esp-12345")
     ]
     extra3 = manager.ingest(sig3)
-    assert len(extra3) == 1
-    assert extra3[0].name == "replay_detected"
-    assert extra3[0].value is True
+    assert extra3 == []
 
     sessions = manager.get_sessions()
     assert len(sessions) == 1
-    assert sessions[0]["replay_detected"] is True
+    assert sessions[0]["suspected_replay"] is True
+    assert sessions[0]["replay_detected"] is False
     assert 100 in sessions[0]["duplicate_sequences"]
-
-
-def test_live_source_interface_listing():
-    interfaces = LiveSource.list_interfaces()
-    assert isinstance(interfaces, list)
-    # If tshark/Npcap is installed, should discover network adapters
-    if interfaces:
-        assert "index" in interfaces[0]
-        assert "name" in interfaces[0]
 
 
 def test_end_to_end_pcap_analysis():
@@ -65,7 +55,7 @@ def test_end_to_end_pcap_analysis():
         assert report["crypto"]["ike_version"] == "IKEv2"
         assert report["crypto"]["encryption"] == "AES-GCM-16"
         assert report["traffic"]["packets_processed"] == 6
-        assert report["compliance"]["nist_sp_800_77_rev1"] == "PASS"
+        assert report["compliance"]["nist_sp_800_77_rev1"] == "UNKNOWN"
         assert isinstance(report["findings"], list)
         assert len(report["findings"]) > 0
     finally:

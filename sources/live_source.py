@@ -1,30 +1,31 @@
+import asyncio
+import queue
+import threading
 import pyshark
 from sources.base_source import BaseSource
 
 
 class LiveSource(BaseSource):
-    """
-    Live network interface packet capture source for real-time VPN inspection.
-    Uses kernel-level BPF filtering (Berkeley Packet Filter) to isolate VPN traffic
-    (IKE UDP 500, NAT-T UDP 4500, ESP, AH) without overwhelming system resources.
-    """
-
     DEFAULT_BPF_FILTER = "udp port 500 or udp port 4500 or esp or ah"
 
-    def __init__(
-        self,
-        interface=None,
-        capture_filter=None,
-        display_filter=None,
-        packet_count=None,
-        timeout=None
-    ):
-        self.interface = interface
+    def __init__(self, interface=None, capture_filter=None, display_filter=None,
+                 packet_count=None, timeout=None, queue_size=1024):
+        if packet_count is not None and packet_count <= 0:
+            raise ValueError("Packet count must be positive")
+        if timeout is not None and timeout <= 0:
+            raise ValueError("Timeout must be positive")
+        if queue_size <= 0:
+            raise ValueError("Queue size must be positive")
+        self.interface, self.display_filter = interface, display_filter
         self.bpf_filter = capture_filter if capture_filter is not None else self.DEFAULT_BPF_FILTER
-        self.display_filter = display_filter
-        self.packet_count = packet_count
-        self.timeout = timeout
-        self.capture = None
+        self.packet_count, self.timeout = packet_count, timeout
+        self.capture = self._thread = self._loop = self._task = None
+        self._queue = queue.Queue(maxsize=queue_size)
+        self._done = threading.Event()
+        self._stop = threading.Event()
+        self.error = None
+        self.status = "ready"
+        self.queue_drops = 0
 
     @classmethod
     def list_interfaces(cls):
@@ -62,52 +63,70 @@ class LiveSource(BaseSource):
                                 "index": len(interfaces) + 1,
                                 "name": line.strip()
                             })
-            except Exception:
-                pass
+            except Exception as err:
+                raise RuntimeError("Could not enumerate interfaces; check TShark/Npcap installation and permissions.") from err
         return interfaces
 
-    def read(self):
-        """
-        Initializes live capture on the specified or default interface
-        and yields packets in a generator stream.
-        """
-        capture_kwargs = {
-            "bpf_filter": self.bpf_filter,
-            "display_filter": self.display_filter,
-        }
-        if self.interface:
-            capture_kwargs["interface"] = self.interface
-
-        try:
-            self.capture = pyshark.LiveCapture(**capture_kwargs)
-        except Exception as err:
-            raise RuntimeError(
-                f"Failed to start LiveCapture on interface '{self.interface}': {err}. "
-                "Ensure Wireshark/Npcap is installed and running with appropriate permissions."
-            ) from err
-
-        def packet_stream():
-            count = 0
+    def _worker(self):
+        self._loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self._loop)
+        async def run():
+            self.capture = pyshark.LiveCapture(interface=self.interface, bpf_filter=self.bpf_filter,
+                display_filter=self.display_filter, eventloop=self._loop)
+            def accept(packet):
+                try:
+                    self._queue.put_nowait(packet)
+                except queue.Full:
+                    self.queue_drops += 1
             try:
-                for packet in self.capture.sniff_continuously(packet_count=self.packet_count):
-                    yield packet
-                    count += 1
-                    if self.packet_count and count >= self.packet_count:
-                        break
-            except Exception:
-                pass
+                await asyncio.wait_for(self.capture.packets_from_tshark(accept,
+                    packet_count=self.packet_count), timeout=self.timeout)
+                self.status = "complete"
+            except asyncio.TimeoutError:
+                self.status = "timeout"
+            finally:
+                await self.capture.close_async()
+        try:
+            self._task = self._loop.create_task(run())
+            if self._stop.is_set():
+                self._task.cancel()
+            self._loop.run_until_complete(self._task)
+        except asyncio.CancelledError:
+            self.status = "stopped"
+        except Exception as err:
+            self.error = err
+            self.status = "error"
+        finally:
+            self._loop.close()
+            self._done.set()
+
+    def read(self):
+        if self._thread is not None:
+            raise RuntimeError("Create a new LiveSource for each capture")
+        self.status = "capturing"
+        self._thread = threading.Thread(target=self._worker, daemon=True, name="vpn-capture")
+        self._thread.start()
+        def stream():
+            try:
+                while not self._done.is_set() or not self._queue.empty():
+                    try:
+                        yield self._queue.get(timeout=0.5)
+                    except queue.Empty:
+                        yield None  # heartbeat: allows idle reports and Ctrl+C
+                if self.error:
+                    raise RuntimeError("Live capture failed; check interface, TShark/Npcap and capture permissions.") from self.error
             finally:
                 self.close()
-
-        return packet_stream()
+        return stream()
 
     def close(self):
-        """
-        Stops live capture and terminates tshark subprocess safely.
-        """
-        if self.capture:
+        self._stop.set()
+        if self._loop and self._task and not self._done.is_set():
             try:
-                self.capture.close()
-            except Exception:
-                pass
-            self.capture = None
+                self._loop.call_soon_threadsafe(self._task.cancel)
+            except RuntimeError:
+                pass  # worker finished between the state check and cancellation
+        if self._thread:
+            self._thread.join(timeout=5)
+            if self._thread.is_alive():
+                raise RuntimeError("Capture worker did not stop within five seconds")

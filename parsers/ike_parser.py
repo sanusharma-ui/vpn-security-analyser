@@ -1,4 +1,5 @@
 from core.signal import SecuritySignal
+from parsers.context import endpoints
 
 
 class IKEParser:
@@ -78,8 +79,9 @@ class IKEParser:
 
     # IKEv1 & IKEv2 Exchange Types
     EXCHANGE_TYPES = {
-        1: "Main Mode",
-        2: "Authentication Only",
+        1: "Base",
+        2: "Main Mode",
+        3: "Authentication Only",
         4: "Aggressive Mode",
         5: "Informational",
         32: "Quick Mode",
@@ -111,7 +113,7 @@ class IKEParser:
 
         layer = packet.isakmp
 
-        session_id = self._build_session_id(layer)
+        session_id = self._build_session_id(layer, packet)
 
         signals.append(
             self._signal(
@@ -142,7 +144,7 @@ class IKEParser:
         role = None
         if str(flag_i).lower() in ("true", "1"):
             role = "initiator"
-        elif str(flag_r).lower() in ("true", "1"):
+        elif str(flag_i).lower() in ("false", "0"):
             role = "responder"
 
         if role:
@@ -175,7 +177,7 @@ class IKEParser:
             )
 
             # Flag IKEv1 Aggressive Mode specifically
-            if exchange_type == 4:
+            if major_version == 1 and exchange_type == 4:
                 signals.append(
                     self._signal(
                         "is_aggressive_mode",
@@ -339,7 +341,51 @@ class IKEParser:
                     )
                 )
 
+        # Read every repeated transform, without inventing cross-proposal pairings.
+        fields = {
+            "encryption": ("tf_id_encr", self.ENCRYPTION_ALGORITHMS),
+            "prf": ("tf_id_prf", self.PRF_ALGORITHMS),
+            "integrity": ("tf_id_integ", self.INTEGRITY_ALGORITHMS),
+            "dh_group": ("tf_id_dh", None),
+            "key_length": ("ike2_attr_key_length", None),
+        }
+        if major_version == 1:
+            fields = {
+                "encryption": ("trans_attr_enc", self.IKEV1_ENCRYPTION_ALGORITHMS),
+                "prf": ("trans_attr_hash", self.IKEV1_HASH_ALGORITHMS),
+                "dh_group": ("trans_attr_group_desc", None),
+                "key_length": ("trans_attr_key_length", None),
+            }
+        for name, (field, mapping) in fields.items():
+            for raw in self._get_fields(layer, field):
+                try:
+                    number = int(str(raw), 0)
+                except (ValueError, TypeError):
+                    continue
+                value = mapping.get(number, f"UNKNOWN-{number}") if mapping else number
+                if not any(s.name == name and s.value == value for s in signals):
+                    signals.append(self._signal(name, value, packet_number, session_id, "crypto"))
+        scope = "observed"
+        if major_version == 2 and exchange_type == 34:
+            if str(flag_r).lower() in ("true", "1"):
+                scope = "selected"
+            elif str(flag_r).lower() in ("false", "0"):
+                scope = "offered"
+        for signal in signals:
+            if signal.category == "crypto" and signal.name not in ("nonce_length",):
+                signal.scope = scope
         return signals
+
+    def _get_fields(self, layer, name):
+        try:
+            container = layer.get_field(name)
+            values = getattr(container, "all_fields", None)
+            if isinstance(values, (list, tuple)) and values:
+                return [getattr(v, "show", str(v)) for v in values]
+        except (AttributeError, KeyError):
+            pass
+        value = self._get_field(layer, name)
+        return value if isinstance(value, list) else [value]
 
     def _signal(
         self,
@@ -359,24 +405,17 @@ class IKEParser:
             category=category
         )
 
-    def _build_session_id(self, layer):
-
-        initiator = self._get_field(
-            layer,
-            "ispi"
-        )
-
-        responder = self._get_field(
-            layer,
-            "rspi"
-        )
-
+    def _build_session_id(self, layer, packet):
+        initiator = self._get_field(layer, "ispi")
         if not initiator:
             return None
-
-        responder = responder or "unknown"
-
-        return f"{initiator}-{responder}"
+        src, dst = endpoints(packet)
+        peers = "|".join(sorted((src, dst)))
+        responder = self._get_field(layer, "rspi") or "0"
+        compact = str(responder).replace(":", "").removeprefix("0x")
+        if compact and set(compact) == {"0"}:
+            responder = "0"
+        return f"ike:{peers}:{initiator}/{responder}"
 
     def _get_field(self, layer, name):
 

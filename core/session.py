@@ -1,59 +1,57 @@
+from collections import OrderedDict
 from dataclasses import dataclass, field
-from typing import Dict, Any, List, Set, Tuple
+from core.signal import SecuritySignal
 
 
 @dataclass
 class VPNSession:
-
     session_id: str
     packet_count: int = 0
-    signals: Dict[str, Any] = field(default_factory=dict)
-    exchanges: List[str] = field(default_factory=list)
-    observed_sequences: Set[int] = field(default_factory=set)
-    duplicate_sequences: List[int] = field(default_factory=list)
-    roles: List[str] = field(default_factory=list)
+    last_seen: float = 0
+    last_packet: int = None
+    observations: dict = field(default_factory=dict)
+    sequences: OrderedDict = field(default_factory=OrderedDict)
+    duplicates: list = field(default_factory=list)
+    truncated: bool = False
+    max_observations: int = 256
+    sequence_window: int = 4096
 
-    def add_signal(self, name, value) -> List[Tuple[str, Any]]:
-        self.packet_count += 1
-        new_events = []
+    def ingest(self, signal):
+        if signal.packet_number is None or signal.packet_number != self.last_packet:
+            self.packet_count += 1
+            self.last_packet = signal.packet_number
+        if signal.name == "esp_sequence_int":
+            value = signal.value
+            if value in self.sequences:
+                if value not in self.duplicates:
+                    self.duplicates = (self.duplicates + [value])[-16:]
+                self.retain(SecuritySignal("suspected_replay", True, "session",
+                    packet_number=signal.packet_number, session_id=self.session_id,
+                    timestamp=signal.timestamp, category="vulnerability"))
+            self.sequences[value] = None
+            self.sequences.move_to_end(value)
+            if len(self.sequences) > self.sequence_window:
+                self.sequences.popitem(last=False)
+            return
+        if signal.name not in ("esp_sequence",):
+            self.retain(signal)
 
-        if name == "ike_exchange":
-            if value not in self.exchanges:
-                self.exchanges.append(value)
+    def retain(self, signal):
+        key = (signal.scope, signal.name, str(signal.value))
+        if key not in self.observations:
+            if len(self.observations) >= self.max_observations:
+                self.truncated = True
+                return
+            self.observations[key] = []
+        samples = self.observations[key]
+        if len(samples) < 3 and not any(s.packet_number == signal.packet_number for s in samples):
+            samples.append(signal)
 
-        if name == "ike_role":
-            if value not in self.roles:
-                self.roles.append(value)
-
-        # Anti-replay sequence tracking per session/SPI
-        if name == "esp_sequence_int":
-            if value in self.observed_sequences:
-                self.duplicate_sequences.append(value)
-                new_events.append(("replay_detected", True))
-                self.signals["replay_detected"] = True
-                self.signals["duplicate_sequences"] = list(set(self.duplicate_sequences))
-            else:
-                self.observed_sequences.add(value)
-
-        if name not in self.signals:
-            self.signals[name] = value
-        elif self.signals[name] != value:
-            existing = self.signals[name]
-            if not isinstance(existing, list):
-                existing = [existing]
-            if value not in existing:
-                existing.append(value)
-            self.signals[name] = existing
-
-        return new_events
+    def evidence(self):
+        return [s for samples in self.observations.values() for s in samples]
 
     def to_dict(self):
-        return {
-            "session_id": self.session_id,
-            "packet_count": self.packet_count,
-            "exchanges": self.exchanges,
-            "roles": self.roles,
-            "replay_detected": bool(self.duplicate_sequences),
-            "duplicate_sequences": list(set(self.duplicate_sequences)),
-            "signals": self.signals
-        }
+        return {"session_id": self.session_id, "packet_count": self.packet_count,
+                "suspected_replay": bool(self.duplicates), "replay_detected": False,
+                "duplicate_sequences": list(self.duplicates), "evidence_truncated": self.truncated,
+                "sequence_window": self.sequence_window}

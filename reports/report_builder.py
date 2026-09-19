@@ -108,23 +108,13 @@ class ReportBuilder:
                 bool(signals.get("natt_detected"))
         }
 
-        # Compliance Evaluation Summary
-        compliance = {
-            "nist_sp_800_77_rev1": (
-                "PASS"
-                if any(f.get("rule_id") == "COMP-001" and f.get("severity") == "info" for f in findings)
-                else "FAIL"
-            ),
-            "cnsa_2_0": (
-                "PASS"
-                if any(f.get("rule_id") == "COMP-002" and f.get("severity") == "info" for f in findings)
-                else "FAIL"
-            )
-        }
+        compliance = {"nist_sp_800_77_rev1": "UNKNOWN", "cnsa_2_0": "UNKNOWN"}
 
         # Vulnerability Severity Counts
         severity_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0}
         for finding in findings:
+            if finding.get("status") != "FAIL":
+                continue
             sev = finding.get("severity", "info")
             if sev in severity_counts:
                 severity_counts[sev] += 1
@@ -137,7 +127,7 @@ class ReportBuilder:
                     "AI-Powered IPsec VPN Protocol Analyzer",
 
                 "engine_version":
-                    "0.3.0",
+                    "0.4.0",
 
                 "generated_at":
                     datetime.now(
@@ -175,8 +165,11 @@ class ReportBuilder:
             "confidence":
                 confidence,
 
-            "findings":
-                findings,
+            "findings": findings,
+            "finding_status_counts": {
+                status: sum(f.get("status") == status for f in findings)
+                for status in ("PASS", "FAIL", "UNKNOWN", "NOT_APPLICABLE", "SUSPECTED")
+            },
 
             "sessions":
                 sessions

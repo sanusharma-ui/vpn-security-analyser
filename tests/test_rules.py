@@ -19,12 +19,11 @@ def test_rule_engine_aggressive_mode_detection():
 
     assert "IKE-005" in rule_ids
     aggressive_finding = next(f for f in findings if f["rule_id"] == "IKE-005")
-    assert aggressive_finding["severity"] == "critical"
+    assert aggressive_finding["severity"] == "high"
 
     # Aggressive mode should fail NIST SP 800-77 Rev 1
     comp_finding = next(f for f in findings if f["rule_id"] == "COMP-001")
-    assert comp_finding["severity"] == "high"
-    assert "fails" in comp_finding["message"].lower()
+    assert comp_finding["status"] == "UNKNOWN"
 
 
 def test_rule_engine_weak_dh_logjam():
@@ -40,10 +39,9 @@ def test_rule_engine_weak_dh_logjam():
     rule_ids = [f["rule_id"] for f in findings]
 
     assert "DH-002" in rule_ids
-    assert "DH-003" in rule_ids
-    logjam_finding = next(f for f in findings if f["rule_id"] == "DH-003")
-    assert logjam_finding["severity"] == "critical"
-    assert "logjam" in logjam_finding["message"].lower()
+    weak_finding = next(f for f in findings if f["rule_id"] == "DH-002")
+    assert weak_finding["severity"] == "high"
+    assert weak_finding["status"] == "FAIL"
 
 
 def test_rule_engine_replay_detection():
@@ -57,7 +55,7 @@ def test_rule_engine_replay_detection():
 
     assert "IPSEC-004" in rule_ids
     replay_finding = next(f for f in findings if f["rule_id"] == "IPSEC-004")
-    assert replay_finding["severity"] == "critical"
+    assert replay_finding["status"] == "SUSPECTED"
 
 
 def test_rule_engine_ah_without_esp():
@@ -71,10 +69,10 @@ def test_rule_engine_ah_without_esp():
 
     assert "IPSEC-003" in rule_ids
     ah_finding = next(f for f in findings if f["rule_id"] == "IPSEC-003")
-    assert ah_finding["severity"] == "high"
+    assert ah_finding["status"] == "SUSPECTED"
 
 
-def test_rule_engine_cnsa_2_0_pass():
+def test_classical_crypto_does_not_pass_cnsa_2_0():
     engine = RuleEngine()
     signals = {
         "ike_version": "IKEv2",
@@ -87,4 +85,4 @@ def test_rule_engine_cnsa_2_0_pass():
 
     cnsa_finding = next(f for f in findings if f["rule_id"] == "COMP-002")
     assert cnsa_finding["severity"] == "info"
-    assert "meets cnsa" in cnsa_finding["message"].lower()
+    assert cnsa_finding["status"] == "UNKNOWN"

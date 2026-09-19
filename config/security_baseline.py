@@ -1,6 +1,6 @@
 SECURITY_BASELINE = {
 
-    "policy_name": "NIST SP 800-77 Rev 1 & CNSA 2.0 Aligned IPsec Baseline",
+    "policy_name": "Local passive IPsec crypto policy (not a compliance certification)",
 
     "ike_versions": {
         "preferred": [
@@ -40,7 +40,7 @@ SECURITY_BASELINE = {
 
     "minimum_key_length": 128,
     "preferred_key_length": 256,
-    "minimum_nonce_length": 16,  # 128 bits minimum entropy (RFC 7296 / NIST)
+    "minimum_nonce_length": 16,  # Length check only; does not establish entropy
 
     "prf": {
         "preferred": [
@@ -89,20 +89,9 @@ SECURITY_BASELINE = {
         ]
     },
 
+    "policy_version": "2026-09-14",
     "compliance": {
-        "nist_sp_800_77_rev1": {
-            "name": "NIST SP 800-77 Rev 1 (Guide to IPsec VPNs)",
-            "min_dh_group": 14,
-            "min_key_length": 128,
-            "forbidden_ike": ["IKEv1-Aggressive"],
-            "disallowed_ciphers": ["DES", "3DES", "Blowfish", "NULL"]
-        },
-        "cnsa_2_0": {
-            "name": "CNSA Suite 2.0 (Commercial National Security Algorithm)",
-            "required_encryption": ["AES-GCM-16"],
-            "required_key_length": 256,
-            "required_dh_groups": [20, 21],
-            "required_prf": ["HMAC-SHA2-384", "HMAC-SHA2-512"]
-        }
+        "nist_sp_800_77_rev1": {"assessment": "requires additional evidence"},
+        "cnsa_2_0": {"assessment": "not implemented; classical ECDH is not post-quantum"}
     }
 }

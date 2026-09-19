@@ -14,6 +14,8 @@ class SecuritySignal:
     session_id: Optional[str] = None
 
     category: Optional[str] = None
+    timestamp: Optional[str] = None
+    scope: str = "observed"
 
     def to_dict(self):
         return asdict(self)
