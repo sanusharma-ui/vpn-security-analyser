@@ -7,6 +7,7 @@ from analysis.rule_engine import RuleEngine
 from analysis.risk_engine import RiskEngine
 from analysis.confidence_engine import ConfidenceEngine
 from reports.report_builder import ReportBuilder
+from reports.quality import qualify_session, apply_report_quality
 
 
 class SecurityEngine:
@@ -87,6 +88,7 @@ class SecurityEngine:
                 observation_scope="Individual SA; IKE and ESP are not linked without gateway evidence")
             details.update(signals=normalized, findings=session_findings, risk=risk, confidence=confidence,
                 assessment_status="PROVISIONAL" if risk["score"] is not None else "UNKNOWN")
+            qualify_session(details)
             sessions.append(details)
             findings.extend(session_findings)
         normalized = self.normalizer.normalize(all_signals)
@@ -106,7 +108,7 @@ class SecurityEngine:
             retained_sessions=len(sessions), evicted_sessions=self.session_manager.evicted,
             capture_drops=None, scope="retained sessions; packet counters cover the entire run")
         report["summary"].update(assessment_coverage=coverage, assessment_status="PROVISIONAL" if risk["score"] is not None else "UNKNOWN")
-        return report
+        return apply_report_quality(report)
 
     def analyze(self, packets, source_type="unknown", on_update=None, update_interval=2):
         if update_interval <= 0:

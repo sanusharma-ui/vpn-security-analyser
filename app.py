@@ -6,6 +6,7 @@ from sources.pcap_source import PCAPSource
 from sources.live_source import LiveSource
 from core.engine import SecurityEngine
 from ai.ai_explainer import GeminiExplainer
+from reports.quality import apply_report_quality
 
 
 def positive_int(value):
@@ -84,6 +85,7 @@ def main():
             updates = target.open("w", encoding="utf-8")
         def publish(report):
             report["traffic"].update(queue_drops=source.queue_drops, capture_status=source.status)
+            apply_report_quality(report)
             print_executive_summary(report, stream=sys.stderr)
             if updates:
                 updates.write(json.dumps(report) + "\n")
@@ -96,7 +98,14 @@ def main():
             report["metadata"].update(incomplete=True, error=str(err))
             exit_code = 1
         finally:
-            source.close()
+            try:
+                source.close()
+            except Exception:
+                report["metadata"].update(incomplete=True, error="Capture cleanup failed.")
+                exit_code = 1
+        if source_type == "pcap" and report["metadata"].get("stopped_by_user"):
+            report["metadata"]["incomplete"] = True
+        apply_report_quality(report)
         if args.live:
             publish(report)
         # At most one provider call, after capture has stopped. Never blocks packet ingestion.
@@ -112,7 +121,11 @@ def main():
     finally:
         if updates:
             updates.close()
-        source.close()
+        try:
+            source.close()
+        except Exception:
+            print("Capture cleanup failed.", file=sys.stderr)
+            exit_code = 1
     return exit_code
 
 

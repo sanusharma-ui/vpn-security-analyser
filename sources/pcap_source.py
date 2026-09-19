@@ -26,8 +26,7 @@ class PCAPSource(BaseSource):
 
     def close(self):
 
-        if self.capture:
-            try:
-                self.capture.close()
-            except Exception:
-                pass
+        # FileCapture has a length of zero with keep_packets=False; do not test truthiness.
+        if self.capture is not None:
+            self.capture.close()
+            self.capture = None

@@ -127,7 +127,7 @@ class ReportBuilder:
                     "AI-Powered IPsec VPN Protocol Analyzer",
 
                 "engine_version":
-                    "0.4.0",
+                    "0.5.0",
 
                 "generated_at":
                     datetime.now(

@@ -120,13 +120,17 @@ class LiveSource(BaseSource):
         return stream()
 
     def close(self):
+        self.request_stop()
+        if self._thread:
+            self._thread.join(timeout=5)
+            if self._thread.is_alive():
+                raise RuntimeError("Capture worker did not stop within five seconds")
+
+    def request_stop(self):
+        """Thread-safe nonblocking cancellation for API callers."""
         self._stop.set()
         if self._loop and self._task and not self._done.is_set():
             try:
                 self._loop.call_soon_threadsafe(self._task.cancel)
             except RuntimeError:
                 pass  # worker finished between the state check and cancellation
-        if self._thread:
-            self._thread.join(timeout=5)
-            if self._thread.is_alive():
-                raise RuntimeError("Capture worker did not stop within five seconds")

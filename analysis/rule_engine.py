@@ -64,18 +64,30 @@ class RuleEngine:
                 f"{scope.capitalize()} key length: {value} bits.",
                 "Meet the configured minimum key length." if severity == "high" else None,
                 None if valid else "UNKNOWN")
+            ciphers = self.values(signals, "encryption")
+            if valid and len(ciphers) == 1:
+                cipher = ciphers[0]
+                allowed = (128, 192, 256) if cipher.startswith("AES-") else ((256,) if cipher == "ChaCha20-Poly1305" else ())
+                if allowed and value not in allowed:
+                    add("KEY-003", "key_length", value, "info",
+                        "Key length is inconsistent with the observed cipher; association or decoding is uncertain.",
+                        status="UNKNOWN")
 
         ciphers = self.values(signals, "encryption")
         aead = bool(ciphers) and all(c in ("AES-GCM-8", "AES-GCM-12", "AES-GCM-16", "ChaCha20-Poly1305") for c in ciphers)
         integrity = self.values(signals, "integrity")
         if aead:
             add("INT-001", "integrity", "AEAD", "info", "Observed cipher alternatives provide integrated integrity.", status="NOT_APPLICABLE")
+            if any(value != "NONE" for value in integrity):
+                add("INT-004", "integrity", "CONFLICTING_TRANSFORMS", "info",
+                    "AEAD and separate integrity transforms were both observed; proposal association is uncertain.",
+                    status="UNKNOWN")
         elif not integrity:
             add("INT-002", "integrity", None, "info", "Integrity or its association with proposals was not observable.", status="UNKNOWN")
         else:
             for value in integrity:
                 policy = self.baseline["integrity"]
-                severity = "high" if value in policy["legacy"] else "info"
+                severity = "high" if value in policy["legacy"] or value == "NONE" else "info"
                 status = "FAIL" if severity == "high" else ("PASS" if value in policy["preferred"] else "UNKNOWN")
                 add("INT-003", "integrity", value, severity,
                     f"{scope.capitalize()} integrity transform: {value}.", status=status)

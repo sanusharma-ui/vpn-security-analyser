@@ -4,7 +4,7 @@ Deterministic IPsec/IKE assessment from PCAP/PCAPNG or a live interface. The eng
 
 ## Requirements
 
-- Python 3.10+ and the packages in `requirements.txt` (`pyshark`, `pytest`).
+- Python 3.10+ and the packages in `requirements.txt` (PyShark, FastAPI/Uvicorn and test/client dependencies).
 - Wireshark/TShark installed; Npcap and appropriate interface permissions for Windows live capture.
 - Gemini is optional. It uses the standard-library HTTPS client, with no extra SDK dependency.
 
@@ -12,6 +12,25 @@ Deterministic IPsec/IKE assessment from PCAP/PCAPNG or a live interface. The eng
 python -m pip install -r requirements.txt
 python app.py data/pcaps/test_vpn.pcap --output data/reports/report.json
 ```
+
+## HTTP backend and manual runner
+
+The authenticated FastAPI backend supports capture jobs, raw PCAP uploads, persistent reports, stop/status, SSE updates and sanitized AI inputs. See [API_HANDOFF.md](API_HANDOFF.md) for all endpoints, request examples, score semantics and deployment limits.
+
+```powershell
+$env:VPN_ANALYZER_API_KEY = (& python -c "import secrets; print(secrets.token_urlsafe(32))")
+python -m uvicorn api.routes:app --host 127.0.0.1 --port 8000 --workers 1
+```
+
+Swagger is at `http://127.0.0.1:8000/docs`; use `X-API-Key` authorization. For a temporary manual test with automatic local API startup:
+
+```powershell
+python tools/backend_test_runner.py --list-interfaces
+python tools/backend_test_runner.py --interface "Wi-Fi" --duration 60
+python tools/backend_test_runner.py --pcap data/pcaps/test_vpn.pcap
+```
+
+The runner saves the full report, AI input and status history under `data/reports/manual`. ML remains reserved; a web dashboard is not included.
 
 ## Live analysis
 
@@ -46,7 +65,7 @@ One request runs after capture ends, with a 20-second HTTP timeout. Response siz
 - Each finding includes status, scope, rule ID, affected SA and up to three packet/timestamp evidence samples. Missing evidence uses `UNKNOWN`; AEAD's separate integrity check uses `NOT_APPLICABLE`. Duplicate ESP sequences mean `SUSPECTED` replay, not proven attack or receiver acceptance.
 - Nonce length does not establish entropy. AH alone does not establish whether another layer encrypts the application data. High ESP sequence numbers do not prove ESN is disabled.
 - Risk is the maximum severity weight among confirmed assessed controls (low 10, medium 30, high 60, critical 100). Added weaknesses cannot lower it. Unknown/suspected findings and offered proposals do not change this score.
-- Security score is `100 - risk`, only when a cipher was assessable; otherwise it is null. Every available score remains `PROVISIONAL`: it measures supported observed controls, not breach probability or whole-VPN safety. A score of 100 does not certify security.
+- Security score is `100 - risk` only for an attributed SA with complete, unambiguous selected crypto evidence across the supported checks. Missing, unknown, malformed or conflicting evidence suppresses it. Overall score requires all retained SAs to qualify and no known queue loss, eviction, truncation or incomplete capture; otherwise it is null with explicit `score_reasons`. Every available score is `PROVISIONAL`, not whole-VPN safety or certification.
 - Coverage is the fraction of six supported passive crypto checks assessed per SA. Overall coverage is the minimum across retained SAs. `analysis_confidence` remains a compatibility alias for coverage, not statistical confidence. Unobservable authentication, CHILD_SA policy and receiver replay enforcement are listed separately.
 - Full NIST SP 800-77 / CNSA 2.0 assessments remain `UNKNOWN`. This local policy is not certification; classical ECDH does not establish post-quantum compliance.
 
@@ -54,14 +73,14 @@ One request runs after capture ends, with a 20-second HTTP timeout. Response siz
 
 The capture queue retains at most 1,024 packets and counts application queue drops. Kernel/Npcap capture drops are unknown (`capture_drops: null`); they are not reported as zero. The engine retains at most 512 active SAs, expires idle SAs after 300 seconds of processing inactivity, and retains 256 unique observations per SA with three evidence samples each. Sequence duplicate checks cover the most recent 4,096 distinct sequence values per SA. Duplicate examples are capped at 16.
 
-Reports explicitly count evicted SAs and flag observation truncation. A truncated observation set suppresses the security score. Packet counters cover the run; scores/findings cover retained SAs only. Persist JSONL updates if historical findings are required. This is not a full forensic archive or a disk PCAP ring buffer. SPI reuse without observable lifecycle evidence remains ambiguous.
+Reports explicitly count evicted SAs and flag observation truncation. Eviction, truncation, known queue loss and capture failure suppress the overall security score. Packet counters cover the run; scores/findings cover retained SAs only. Persist JSONL updates if historical findings are required. This is not a full forensic archive or a disk PCAP ring buffer. SPI reuse without observable lifecycle evidence remains ambiguous.
 
 ## Integration and tests
 
-`SecurityEngine.ingest(packet)` and `snapshot()` support incremental consumers; `analyze(..., on_update=callback, update_interval=2)` supports streaming updates. `LiveSource.read()` yields `None` heartbeats while idle. Existing `api/` files remain placeholders; this release exposes CLI/JSON/JSONL and Python interfaces, not an HTTP server or dashboard.
+`SecurityEngine.ingest(packet)` and `snapshot()` support incremental consumers; `analyze(..., on_update=callback, update_interval=2)` supports streaming updates. `LiveSource.read()` yields `None` heartbeats while idle. The `api/` package exposes an authenticated HTTP backend and keeps latest snapshots in SQLite. The dashboard remains a separate frontend task.
 
 ```powershell
 python -m pytest -q -p no:cacheprovider
 ```
 
-Tests cover the included PCAP through real TShark, mixed SAs, repeated offers, selected crypto, evidence, scoring, bounded state and mocked live/Gemini success and failure paths. Hardware live capture and actual Gemini connectivity require separate environment-specific verification. `ai/ml_model.py`, `analysis/feature_extractor.py` and `analysis/anomaly_detector.py` remain untouched for the ML implementation.
+Tests cover the included PCAP through real TShark, HTTP upload, authentication, job lifecycle, persistence/restart, bounded state, scoring eligibility, sanitized AI inputs and mocked live/Gemini paths. A short idle Windows live smoke test completed with zero IPsec packets and UNKNOWN score; actual VPN-traffic assessment and Gemini connectivity still require manual verification. `ai/ml_model.py`, `analysis/feature_extractor.py` and `analysis/anomaly_detector.py` remain untouched for the ML implementation.

@@ -89,7 +89,7 @@ SECURITY_BASELINE = {
         ]
     },
 
-    "policy_version": "2026-09-14",
+    "policy_version": "2026-09-19",
     "compliance": {
         "nist_sp_800_77_rev1": {"assessment": "requires additional evidence"},
         "cnsa_2_0": {"assessment": "not implemented; classical ECDH is not post-quantum"}

@@ -361,6 +361,8 @@ class IKEParser:
                 try:
                     number = int(str(raw), 0)
                 except (ValueError, TypeError):
+                    if raw is not None:
+                        signals.append(self._signal(name, "UNPARSEABLE", packet_number, session_id, "crypto"))
                     continue
                 value = mapping.get(number, f"UNKNOWN-{number}") if mapping else number
                 if not any(s.name == name and s.value == value for s in signals):
