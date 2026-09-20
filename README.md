@@ -2,6 +2,14 @@
 
 Deterministic IPsec/IKE assessment from PCAP/PCAPNG or a live interface. The engine owns every finding, policy result and score. Optional Gemini explanations paraphrase engine findings; they do not perform assessment. ML integration remains reserved for a separate implementation.
 
+## License
+
+Required Notice: Copyright (c) 2026 Sanu Sharma
+
+This project is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE). Noncommercial use is permitted subject to its terms; see the full license for permitted purposes and obligations.
+
+Separate commercial licensing is available on request from Sanu Sharma. For commercial use not permitted by the PolyForm license, obtain a separate commercial license before use. To request terms, open a [commercial licensing inquiry](https://github.com/sanusharma-ui/vpn-security-analyser/issues/new?title=Commercial%20licensing%20inquiry). A request alone does not grant commercial rights.
+
 ## Requirements
 
 - Python 3.10+ and the packages in `requirements.txt` (PyShark, FastAPI/Uvicorn and test/client dependencies).
