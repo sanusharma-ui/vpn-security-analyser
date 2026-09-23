@@ -52,3 +52,17 @@ class AIInputResponse(BaseModel):
     findings: list[dict[str, Any]]
     omitted_findings: int
     omitted_sessions: int
+
+
+class ComparisonResponse(BaseModel):
+    schema_version: str
+    mode: Literal["passive_observation_comparison"]
+    baseline: dict[str, Any]
+    current: dict[str, Any]
+    newly_observed: list[dict[str, Any]]
+    no_longer_observed: list[dict[str, Any]]
+    persistent: list[dict[str, Any]]
+    sessions: dict[str, list[str]]
+    scores: dict[str, dict[str, float | None]]
+    score_comparison_reasons: list[str]
+    limitations: list[str]

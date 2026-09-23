@@ -30,7 +30,9 @@ $env:VPN_ANALYZER_API_KEY = (& python -c "import secrets; print(secrets.token_ur
 python -m uvicorn api.routes:app --host 127.0.0.1 --port 8000 --workers 1
 ```
 
-Swagger is at `http://127.0.0.1:8000/docs`; use `X-API-Key` authorization. For a temporary manual test with automatic local API startup:
+- **Web Dashboard**: `http://127.0.0.1:8000/` (Dark-mode responsive SOC/NOC dashboard)
+- **API Documentation**: `http://127.0.0.1:8000/docs` (Swagger UI with `X-API-Key`)
+- In the dashboard, click **Set API Key** in the header to save your operator key for the session.
 
 ```powershell
 python tools/backend_test_runner.py --list-interfaces
@@ -38,7 +40,7 @@ python tools/backend_test_runner.py --interface "Wi-Fi" --duration 60
 python tools/backend_test_runner.py --pcap data/pcaps/test_vpn.pcap
 ```
 
-The runner saves the full report, AI input and status history under `data/reports/manual`. ML remains reserved; a web dashboard is not included.
+The runner saves the full report, AI input and status history under `data/reports/manual`. ML remains reserved; the included dashboard uses the same authenticated backend.
 
 ## Live analysis
 
@@ -50,6 +52,17 @@ python app.py --live "INTERFACE_NAME" --timeout 60 --update-interval 2 --updates
 Use an actual listed interface name, or `default`. `--count 1000` optionally limits captured packets. Ctrl+C stops capture and produces the partial report. `--timeout` includes idle time. Live status goes to stderr; stdout contains final JSON. JSONL snapshots are available while capture is running, including idle heartbeats. The final snapshot includes capture status and queue-drop counts. Capture errors produce an incomplete report and nonzero exit status.
 
 Traffic must reach the monitored interface. Capturing the local host does not automatically observe other hosts on a switched network; a gateway sensor or mirror/TAP deployment is needed for those links. No active probing or packet injection is performed.
+
+## Defensive investigation features (0.6.0)
+
+Use only traffic you are authorized to inspect. All new analysis is passive and local: no scanning, packet injection, credential guessing or exploitation. AI remains optional and does not receive the new timeline, endpoints or proposal detail.
+
+- **Dashboard > Retained Security Associations:** expand **Session timeline** for packet numbers, capture timestamps, exchange headers, notifications and suspected ESP sequence duplicates. Repeated IKE headers may be retransmissions or duplicate capture; they do not prove attacks. IKE_AUTH, CREATE_CHILD_SA and INFORMATIONAL headers do not prove authentication, successful rekey or deletion.
+- Expand **IKE proposal evidence** for per-proposal transforms and associated key lengths, with byte offsets and offered/selected scope. This currently covers visible IKEv2 IKE_SA_INIT proposals. Ambiguous structured selections suppress security-score eligibility; severity weights are unchanged. If byte ranges are unavailable, existing conservative flattened checks remain and detail is explicitly unavailable.
+- **History > Compare saved assessments:** select baseline/current finished jobs and compare newly observed, recurring and no-longer-observed FAIL/SUSPECTED signatures. Offered weaknesses remain distinct from selected ones. A disappearing finding does not prove remediation. Score deltas are withheld for changed/unknown SA populations, incompatible engine/policy/source types or ineligible evidence.
+- Reports retain the latest 128 timeline events per SA, a 128-header repetition window and up to 16 proposal packet samples per SA within a 64 KiB serialized-detail budget; omitted counts are explicit. Each sample caps proposals at 16 and transforms at 32 per proposal. These bounded detail histories are separate from the crypto evidence retention limit. Older reports remain readable but cannot retroactively acquire timeline evidence.
+
+The new fields are included in normal JSON report exports. Gateway-log correlation, custom policy profiles, alerts and ML remain future work.
 
 ## Gemini explanations
 
@@ -69,7 +82,7 @@ One request runs after capture ends, with a 20-second HTTP timeout. Response siz
 
 - Assessments are per observed Security Association (SA). IKE identity includes peers and both SPIs, with promotion from the initial zero responder SPI. ESP identity includes source, destination and SPI. IKE and ESP SAs are not automatically linked into a full tunnel without gateway evidence.
 - Repeated transform values are inspected. IKEv2 IKE_SA_INIT request proposals are `offered`; response transforms are `selected` when the response flag is available. Otherwise values are `observed`. Offered policy weaknesses have their own `offered_policy_risk` and do not describe a selected cipher.
-- Flattened transform observations do not reconstruct every proposal-to-attribute association. No complete negotiated suite or CHILD_SA crypto is inferred from the top-level crypto inventory.
+- IKEv2 IKE_SA_INIT proposal details reconstruct proposal/transform/key-length associations only when TShark provides consistent packet byte ranges. Missing ranges remain `UNAVAILABLE`; malformed, unsupported or capped structures remain `PARTIAL`. The top-level crypto inventory remains flattened and never represents a negotiated suite or CHILD_SA crypto.
 - Each finding includes status, scope, rule ID, affected SA and up to three packet/timestamp evidence samples. Missing evidence uses `UNKNOWN`; AEAD's separate integrity check uses `NOT_APPLICABLE`. Duplicate ESP sequences mean `SUSPECTED` replay, not proven attack or receiver acceptance.
 - Nonce length does not establish entropy. AH alone does not establish whether another layer encrypts the application data. High ESP sequence numbers do not prove ESN is disabled.
 - Risk is the maximum severity weight among confirmed assessed controls (low 10, medium 30, high 60, critical 100). Added weaknesses cannot lower it. Unknown/suspected findings and offered proposals do not change this score.
@@ -85,7 +98,7 @@ Reports explicitly count evicted SAs and flag observation truncation. Eviction, 
 
 ## Integration and tests
 
-`SecurityEngine.ingest(packet)` and `snapshot()` support incremental consumers; `analyze(..., on_update=callback, update_interval=2)` supports streaming updates. `LiveSource.read()` yields `None` heartbeats while idle. The `api/` package exposes an authenticated HTTP backend and keeps latest snapshots in SQLite. The dashboard remains a separate frontend task.
+`SecurityEngine.ingest(packet)` and `snapshot()` support incremental consumers; `analyze(..., on_update=callback, update_interval=2)` supports streaming updates. `LiveSource.read()` yields `None` heartbeats while idle. The `api/` package exposes an authenticated HTTP backend and keeps latest snapshots in SQLite. The included dashboard displays session evidence and compares saved reports.
 
 ```powershell
 python -m pytest -q -p no:cacheprovider

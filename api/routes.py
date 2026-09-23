@@ -6,14 +6,17 @@ import json
 import uuid
 from contextlib import asynccontextmanager
 
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.security import APIKeyHeader
 from starlette.concurrency import run_in_threadpool
+from starlette.staticfiles import StaticFiles
 
 from ai.input_builder import build_ai_input
-from api.schemas import AIInputResponse, CaptureRequest, JobList, JobStatus, ReportResponse
+from api.schemas import AIInputResponse, CaptureRequest, ComparisonResponse, JobList, JobStatus, ReportResponse
 from api.service import JobCapacity, JobConflict, JobService, TERMINAL
 from config.security_baseline import SECURITY_BASELINE
 from config.settings import APISettings
@@ -51,7 +54,7 @@ def create_app(settings=None, service_factory=JobService, interface_provider=Non
             await run_in_threadpool(application.state.service.shutdown)
 
     application = FastAPI(
-        title="IPsec VPN Security Analyzer", version="0.5.0",
+        title="IPsec VPN Security Analyzer", version="0.6.0",
         description="Passive IPsec analysis. Scores are provisional engine results. One worker per data directory.",
         lifespan=lifespan)
     # Read only non-secret CORS configuration before lifespan.
@@ -80,7 +83,7 @@ def create_app(settings=None, service_factory=JobService, interface_provider=Non
 
     @application.get("/health", tags=["system"])
     def health():
-        return {"status": "ok", "version": "0.5.0"}
+        return {"status": "ok", "version": "0.6.0"}
 
     router = APIRouter(prefix="/api/v1", dependencies=[Depends(authorize)])
 
@@ -180,6 +183,10 @@ def create_app(settings=None, service_factory=JobService, interface_provider=Non
             return JSONResponse(report, headers={"Content-Disposition": f'attachment; filename="{job_id}.json"'})
         return report
 
+    @router.get("/jobs/{job_id}/comparison", response_model=ComparisonResponse, tags=["assessment"])
+    def comparison(job_id: uuid.UUID, baseline_id: uuid.UUID, manager=Depends(service)):
+        return manager.compare(str(job_id), str(baseline_id))
+
     @router.get("/jobs/{job_id}/ai-input", response_model=AIInputResponse, tags=["AI"])
     def ai_input(job_id: uuid.UUID, manager=Depends(service)):
         return build_ai_input(manager.report(str(job_id)))
@@ -223,6 +230,11 @@ def create_app(settings=None, service_factory=JobService, interface_provider=Non
                                  headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
     application.include_router(router)
+
+    static_dir = Path(__file__).resolve().parent.parent / "static"
+    if static_dir.exists():
+        application.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
+
     return application
 
 

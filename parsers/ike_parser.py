@@ -1,5 +1,6 @@
 from core.signal import SecuritySignal
 from parsers.context import endpoints
+from parsers.ike_details import number as parse_number, proposal_details
 
 
 class IKEParser:
@@ -376,7 +377,40 @@ class IKEParser:
         for signal in signals:
             if signal.category == "crypto" and signal.name not in ("nonce_length",):
                 signal.scope = scope
+        # Headers cannot establish authentication or CHILD_SA success.
+        src, dst = endpoints(packet)
+        message = {"version": major_version,
+                   "exchange": self.EXCHANGE_TYPES.get(exchange_type, f"TYPE-{exchange_type}"),
+                   "message_id": self._get_int_field(layer, "messageid"),
+                   "response": self._bool(flag_r) if major_version == 2 else None,
+                   "initiator": self._bool(flag_i) if major_version == 2 else None,
+                   "src": src, "dst": dst, "notifications": []}
+        for raw in self._get_fields(layer, "notify_msgtype")[:32]:
+            notify = parse_number(raw)
+            if notify is not None:
+                name = self.NOTIFY_MESSAGES.get(notify, f"TYPE-{notify}")
+                if name not in message["notifications"]:
+                    message["notifications"].append(name)
+                if not any(s.name == "ike_notify" and s.value == name for s in signals):
+                    signals.append(self._signal("ike_notify", name, packet_number, session_id, "protocol"))
+        signals.append(self._signal("ike_message", message, packet_number, session_id, "detail"))
+        if major_version == 2 and exchange_type == 34:
+            details = proposal_details(layer, {
+                1: ("tf_id_encr", self.ENCRYPTION_ALGORITHMS),
+                2: ("tf_id_prf", self.PRF_ALGORITHMS),
+                3: ("tf_id_integ", self.INTEGRITY_ALGORITHMS),
+                4: ("tf_id_dh", self.DH_GROUPS),
+                5: ("tf_id_esn", {0: "NO_ESN", 1: "ESN"}),
+            })
+            detail_signal = self._signal("ike_proposals", details, packet_number, session_id, "detail")
+            detail_signal.scope = scope
+            signals.append(detail_signal)
         return signals
+
+    @staticmethod
+    def _bool(value):
+        value = str(value).lower()
+        return True if value in ("true", "1") else False if value in ("false", "0") else None
 
     def _get_fields(self, layer, name):
         try:

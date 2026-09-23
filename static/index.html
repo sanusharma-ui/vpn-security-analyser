@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IPsec VPN Security Analyzer // Cyber SOC Dashboard</title>
+  <!-- Modern SVG Favicon -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2306B6D4' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z'/%3E%3Cpolyline points='9 12 11 14 15 10'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="css/main.css" />
+</head>
+<body>
+  <div class="app-layout">
+    <!-- SIDEBAR NAVIGATION -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="brand-icon-wrap">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#06B6D4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            <polyline points="9 12 11 14 15 10"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <span class="brand-title">IPsec Shield</span>
+          <span class="brand-subtitle">Security Analyzer</span>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <a href="#dashboard" class="nav-link active" data-view="dashboard">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          <span>Live Overview</span>
+        </a>
+
+        <a href="#capture" class="nav-link" data-view="capture">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          <span>Capture Studio</span>
+        </a>
+
+        <a href="#jobs" class="nav-link" data-view="jobs">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <span>Job History</span>
+        </a>
+
+        <a href="#ai" class="nav-link" data-view="ai">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z"/></svg>
+          <span>AI Intelligence</span>
+        </a>
+
+        <a href="#policy" class="nav-link" data-view="policy">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg>
+          <span>Security Policy</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="flex justify-between items-center text-xs text-muted font-mono">
+          <span>Engine v0.5.0</span>
+          <span class="text-cyan">Passive</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- MOBILE MENU BACKDROP -->
+    <div id="sidebar-backdrop" class="modal-backdrop"></div>
+
+    <!-- MAIN APP WRAPPER -->
+    <div class="main-wrapper">
+      <!-- TOP STICKY HEADER -->
+      <header class="app-header">
+        <div class="header-left">
+          <button class="mobile-menu-btn" id="mobile-menu-toggle" aria-label="Toggle navigation">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          </button>
+
+          <div id="system-health-badge" class="health-badge health-online">
+            <span class="status-pulse-dot"></span> Checking API...
+          </div>
+        </div>
+
+        <div class="header-right">
+          <!-- API KEY CONFIG TRIGGER -->
+          <button class="key-status-badge key-missing" id="btn-key-settings">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-1.5 1.5L16 7l-1.5-1.5L13 7l-1.5-1.5L10 7 8.5 5.5 7 7l-5 5v5h5l5-5 3.5 3.5 7-7z"/><circle cx="7.5" cy="16.5" r="1.5"/></svg>
+            <span id="header-key-badge">Set API Key</span>
+          </button>
+
+          <!-- QUICK ACTION -->
+          <button class="btn btn-primary btn-sm" id="btn-header-new-capture">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            <span>New Capture</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- CONTENT PANELS -->
+      <main class="content-area">
+        <div id="view-dashboard" class="view-panel active"></div>
+        <div id="view-capture" class="view-panel"></div>
+        <div id="view-jobs" class="view-panel"></div>
+        <div id="view-ai" class="view-panel"></div>
+        <div id="view-policy" class="view-panel"></div>
+      </main>
+    </div>
+  </div>
+
+  <!-- API KEY & CREDENTIALS MODAL -->
+  <div id="modal-api-key" class="modal-backdrop">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">API Authentication & Settings</h3>
+        <button class="modal-close" id="modal-api-key-close">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted text-sm mb-4">
+          All analysis endpoints require the shared operator key passed via the <code>X-API-Key</code> header. Credentials are saved locally in your browser session.
+        </p>
+
+        <div class="form-group mb-4">
+          <label class="form-label" for="input-api-key">Operator API Key (X-API-Key)</label>
+          <div class="flex gap-2">
+            <input
+              type="password"
+              id="input-api-key"
+              class="form-control font-mono"
+              placeholder="Enter your 32+ character API key"
+            />
+            <button class="btn btn-secondary" id="btn-toggle-mask-key" type="button" title="Toggle visibility">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+          <span class="form-hint">Set via $env:VPN_ANALYZER_API_KEY when starting the server.</span>
+        </div>
+
+        <div class="form-group mb-4">
+          <label class="form-label" for="input-base-url">API Base URL</label>
+          <input
+            type="text"
+            id="input-base-url"
+            class="form-control font-mono"
+            placeholder="http://127.0.0.1:8000"
+          />
+          <span class="form-hint">Defaults to current origin if served directly by FastAPI.</span>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="btn-test-key" type="button">
+          Test Connection
+        </button>
+        <button class="btn btn-primary" id="btn-save-key" type="button">
+          Save Credentials
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST CONTAINER -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- MODULE ENTRYPOINT -->
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

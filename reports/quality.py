@@ -21,6 +21,8 @@ def qualify_session(session):
         reasons.append("incomplete_supported_checks")
     if session["evidence_truncated"]:
         reasons.append("observations_truncated")
+    if session.get("selected_proposal_issue"):
+        reasons.append("selected_proposal_structure_ambiguous")
     session["score_reasons"] = list(dict.fromkeys(reasons))
     if reasons:
         session["risk"]["security_score"] = None

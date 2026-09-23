@@ -1,6 +1,6 @@
-# Backend handoff ? IPsec VPN Security Analyzer 0.5.0
+# Backend handoff ? IPsec VPN Security Analyzer 0.6.0
 
-Passive IPsec/IKE capture and deterministic assessment, with an authenticated HTTP API and sanitized AI inputs. ML and a web dashboard are not included.
+Passive IPsec/IKE capture and deterministic assessment, with an authenticated HTTP API and sanitized AI inputs. The included web dashboard supports session evidence and saved-report comparison. ML remains reserved.
 
 ## Start the backend
 
@@ -37,6 +37,7 @@ $env:VPN_ANALYZER_API_KEY = (& .\.venv\Scripts\python.exe -c "import secrets; pr
 | GET | `/api/v1/jobs/{id}/report` | Latest report, also during capture |
 | GET | `/api/v1/jobs/{id}/report?download=true` | JSON download |
 | GET | `/api/v1/jobs/{id}/events` | SSE status/summary updates |
+| GET | `/api/v1/jobs/{id}/comparison?baseline_id={baseline_id}` | Compare two finished saved reports |
 | GET | `/api/v1/jobs/{id}/ai-input` | Sanitized inputs for a separate AI |
 | POST | `/api/v1/jobs/{id}/explain` | Optional Gemini explanation after capture |
 | DELETE | `/api/v1/jobs/{id}` | Delete a finished job; HTTP 204 |
@@ -167,3 +168,22 @@ To use an existing server, add `--base-url http://127.0.0.1:8000` and set `VPN_A
 - Errors: 401 key, 404 unknown job, 409 incompatible state, 413 upload size, 415 media type, 422 invalid input, 429 capacity, 503 interface/dependency unavailable.
 
 Run regression tests: `python -m pytest -q -p no:cacheprovider`. Mock-source tests do not prove real VPN traffic visibility or Gemini connectivity.
+
+
+## Passive investigation additions (0.6.0)
+
+`GET /api/v1/jobs/{current_id}/comparison?baseline_id={baseline_id}` requires the normal API key. It reads existing saved reports; it never starts a capture or an AI request. Both jobs must be terminal and have reports. Invalid UUIDs return 422, missing jobs 404, and active/same/missing-report comparisons 409. Users explicitly choose the baseline; creation time need not equal the PCAP capture time.
+
+The response includes `baseline` and `current` report references, `newly_observed`, `persistent` and `no_longer_observed` finding-signature groups, exact-SA identity differences, and `scores`. Signatures use rule ID, parameter, value, scope, status and severity for FAIL/SUSPECTED findings. Groups include before/after SA counts and up to three evidence samples from each report. Persistent signatures across different SAs do not establish a persistent tunnel. No-longer-observed does not mean fixed.
+
+Score `delta` is current minus baseline, or null if `score_comparison_reasons` is nonempty. Matching engine/policy/source type, exact attributed SA population, eligible complete evidence and numeric scores are required. Deltas remain descriptive, not whole-VPN improvement claims. Legacy reports without quality/version metadata suppress deltas.
+
+Each new `sessions[]` entry adds:
+
+- `timeline`: capture-ingestion-ordered `events` (kind, packet_number, timestamp, details), `total_events`, `omitted_events`, `limit` and `repeat_window`. Last 128 events/header identities are retained. No successful authentication or CHILD_SA lifecycle is inferred from encrypted headers.
+- `ike_proposals`: up to 16 IKEv2 IKE_SA_INIT packet samples within a 64 KiB serialized-detail budget per SA (`proposal_history_limit_bytes`), each with scope, packet/timestamp, `status` (COMPLETE/PARTIAL/UNAVAILABLE), `reasons`, `truncated`, and proposals with transform IDs/names, key lengths and byte offsets. COMPLETE describes reconstructed structure, not a secure or authenticated tunnel. Limits: 16 proposals/sample, 32 transforms/proposal, 2,048 fields/name inspected.
+- `proposal_samples_omitted` and `selected_proposal_issue`: malformed, incomplete or ambiguous available selected structure suppresses scores with `selected_proposal_structure_ambiguous`, including issues observed after sample storage fills. Missing offset support retains the legacy flat-assessment path and reports unavailable proposal detail.
+
+Timeline/proposal truncation counts describe supplemental detail history, not loss of the separately retained assessment observations. SA eviction still removes that SA's bounded history and is accounted for by `traffic.evicted_sessions`. New raw details are excluded from the allowlisted AI input.
+
+Frontend verification: `node --test tests/test_investigation.mjs`. Python regression suite: `python -m pytest -q -p no:cacheprovider`.

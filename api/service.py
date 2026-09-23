@@ -12,6 +12,7 @@ from reports.quality import apply_report_quality
 from sources.live_source import LiveSource
 from sources.pcap_source import PCAPSource
 from api.storage import JobStore
+from reports.comparison import compare_reports
 
 LOGGER = logging.getLogger(__name__)
 TERMINAL = {"completed", "stopped", "failed", "interrupted"}
@@ -209,6 +210,20 @@ class JobService:
         if row["explanation"] is not None:
             report["ai_explanation"] = row["explanation"]
         return report
+
+    def compare(self, job_id, baseline_id):
+        if job_id == baseline_id:
+            raise JobConflict("Choose two different finished jobs.")
+        with self._lock:
+            baseline, current = self.snapshot(baseline_id), self.snapshot(job_id)
+            if any(row["state"] not in TERMINAL for row in (baseline, current)):
+                raise JobConflict("Finish or stop both jobs before comparing reports.")
+            if any(row["report"] is None for row in (baseline, current)):
+                raise JobConflict("Both jobs must have a saved report.")
+            result = compare_reports(baseline["report"], current["report"])
+            for label, row in (("baseline", baseline), ("current", current)):
+                result[label].update(job_id=row["id"], state=row["state"], created_at=row["created_at"])
+            return result
 
     def stop(self, job_id):
         with self._lock:
